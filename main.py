@@ -38,6 +38,7 @@ except Exception as exc:
 if len(annual) < 2:
     st.error("회귀분석에 필요한 연도가 2개 이상 존재하지 않습니다.")
     st.stop()
+
 x = annual["연도"].to_numpy(dtype=float)
 y = annual["연평균기온"].to_numpy(dtype=float)
 slope, intercept = np.polyfit(x, y, 1)
@@ -46,10 +47,42 @@ correlation = annual["연도"].corr(annual["연평균기온"])
 start_year = int(annual["연도"].min())
 end_year = int(annual["연도"].max())
 
+# 최근 20년: 자료의 마지막 기준 연도를 포함한 20개 달력 연도
+recent_start = end_year - 19
+recent = annual[annual["연도"].between(recent_start, end_year)]
+if len(recent) >= 2:
+    recent_slope, recent_intercept = np.polyfit(
+        recent["연도"].to_numpy(dtype=float),
+        recent["연평균기온"].to_numpy(dtype=float),
+        1,
+    )
+else:
+    recent_slope = None
+
 col1, col2, col3 = st.columns(3)
 col1.metric("회귀분석에 사용한 연도", f"{len(annual)}개")
 col2.metric("시작 연도", f"{start_year}년")
 col3.metric("끝 연도", f"{end_year}년")
+
+st.subheader("100년당 기온 변화 추세 비교")
+whole_col, recent_col = st.columns(2)
+whole_col.metric(
+    f"전체 기간 ({start_year}~{end_year}년)",
+    f"{slope * 100:+.2f} ℃/100년",
+)
+whole_col.caption(f"유효한 관측 연도 {len(annual)}개로 회귀분석")
+if recent_slope is not None:
+    recent_col.metric(
+        f"최근 20년 ({recent_start}~{end_year}년)",
+        f"{recent_slope * 100:+.2f} ℃/100년",
+    )
+    recent_col.caption(f"해당 기간 중 유효한 관측 연도 {len(recent)}개로 회귀분석")
+else:
+    recent_col.warning("최근 20년 구간에 회귀분석 가능한 연도가 2개 미만입니다.")
+st.caption(
+    "회귀 직선의 연간 기울기(℃/년)에 100을 곱했습니다. "
+    "최근 20년 값은 비교를 위한 추세로, 향후 100년간의 실제 상승량을 뜻하지 않습니다."
+)
 
 st.subheader("연도별 평균기온과 회귀 직선")
 line_years = np.arange(1900, 2101)
