@@ -1,3 +1,66 @@
+import numpy as np
+import pandas as pd
+import plotly.graph_objects as go
+import streamlit as st
+
+DATA_URL = (
+    "https://raw.githubusercontent.com/greatsong/modudata/"
+    "bb860932644270ad1199f10d3e7670e30231bce4/data/seoul.csv"
+)
+
+st.set_page_config(page_title="기온 예측기", page_icon="🌡️", layout="wide")
+st.title("서울 기온 예측기")
+st.write("서울의 연평균기온 데이터를 직선 회귀분석하여 선택한 연도의 기온을 예상합니다.")
+
+
+@st.cache_data(ttl=3600)
+def load_annual_data():
+    df = pd.read_csv(DATA_URL, encoding="utf-8-sig")
+    df["날짜"] = pd.to_datetime(df["날짜"], errors="coerce")
+    df["평균기온"] = pd.to_numeric(df["평균기온"], errors="coerce")
+    df = df.dropna(subset=["날짜", "평균기온"]).copy()
+    df["연도"] = df["날짜"].dt.year
+    df = df[df["연도"] <= 2025]
+
+    annual = (
+        df.groupby("연도", as_index=False)
+        .agg(연평균기온=("평균기온", "mean"), 관측일수=("날짜", "nunique"))
+    )
+    return annual[annual["관측일수"] >= 300].sort_values("연도")
+
+
+try:
+    annual = load_annual_data()
+except Exception as exc:
+    st.error(f"기온 데이터를 불러올 수 없습니다: {exc}")
+    st.stop()
+
+if len(annual) < 2:
+    st.error("회귀분석에 필요한 연도가 2개 이상 존재하지 않습니다.")
+    st.stop()
+x = annual["연도"].to_numpy(dtype=float)
+y = annual["연평균기온"].to_numpy(dtype=float)
+slope, intercept = np.polyfit(x, y, 1)
+correlation = annual["연도"].corr(annual["연평균기온"])
+
+start_year = int(annual["연도"].min())
+end_year = int(annual["연도"].max())
+
+col1, col2, col3 = st.columns(3)
+col1.metric("회귀분석에 사용한 연도", f"{len(annual)}개")
+col2.metric("시작 연도", f"{start_year}년")
+col3.metric("끝 연도", f"{end_year}년")
+
+st.subheader("연도별 평균기온과 회귀 직선")
+line_years = np.arange(1900, 2101)
+line_temps = slope * line_years + intercept
+
+fig = go.Figure()
+fig.add_trace(
+    go.Scatter(
+        x=x,
+        y=y,
+        mode="markers",
         name="관측 연평균기온",
         marker=dict(size=7, color="#2E86C1"),
         hovertemplate="%{x}년<br>연평균기온: %{y:.2f} ℃<extra></extra>",
